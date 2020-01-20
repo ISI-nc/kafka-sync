@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/Shopify/sarama"
-	"github.com/mcluseau/go-diff"
+	"github.com/isi-nc/go-diff"
 )
 
 const indexBatchSize = 500
