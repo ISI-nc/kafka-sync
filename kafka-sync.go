@@ -327,22 +327,19 @@ func (s *Syncer) IndexTopic(kafka sarama.Client, index diff.Index) (msgCount uin
 		}
 	}
 
-	// report kafka errors
-	go func() {
-		// FIXME fail on first error
-		for m := range pc.Errors() {
-			if Debug {
-				log.Printf("-> got kafka error %+v", m)
-			}
-		}
-	}()
-
-	timer := time.NewTimer(kafka.Config().Consumer.MaxProcessingTime)
+	// as written in sarama doc :
+	// Note that, since the Messages channel is buffered, the actual grace time is
+	// (MaxProcessingTime * ChannelBufferSize).
+	// real timeout is 100ms * 256 = around 2.5s, 100ms is not enough
+	timeout := kafka.Config().Consumer.MaxProcessingTime * time.Duration(kafka.Config().ChannelBufferSize)
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	msgCount = 0
 consume:
 	for {
 		select {
+		case err := <-pc.Errors():
+			log.Printf("-> got kafka error %+v", err)
 		case m := <-pc.Messages():
 			{
 				hw := pc.HighWaterMarkOffset()
@@ -377,7 +374,13 @@ consume:
 			consumer.Close()
 			return msgCount, errors.New("timed out while waiting for kafka message")
 		}
-		timer.Reset(kafka.Config().Consumer.MaxProcessingTime)
+
+		// as written in the timer.Reset() doc :
+		// Reset should be invoked only on stopped or expired timers with drained channels.
+		if !timer.Stop() {
+			<- timer.C
+		}
+		timer.Reset(timeout)
 	}
 
 	pc.Close()
