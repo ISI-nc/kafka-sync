@@ -327,22 +327,14 @@ func (s *Syncer) IndexTopic(kafka sarama.Client, index diff.Index) (msgCount uin
 		}
 	}
 
-	// report kafka errors
-	go func() {
-		// FIXME fail on first error
-		for m := range pc.Errors() {
-			if Debug {
-				log.Printf("-> got kafka error %+v", m)
-			}
-		}
-	}()
-
 	timer := time.NewTimer(kafka.Config().Consumer.MaxProcessingTime)
 	defer timer.Stop()
 	msgCount = 0
 consume:
 	for {
 		select {
+		case err := <-pc.Errors():
+			log.Printf("-> got kafka error %+v", err)
 		case m := <-pc.Messages():
 			{
 				hw := pc.HighWaterMarkOffset()
